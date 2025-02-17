@@ -53,23 +53,30 @@ scene.add(tubeHitArea);
 const boxGroup = new THREE.Group();
 scene.add(boxGroup);
 
-const numBoxes = 55;
-const size = 0.075;
+const numBoxes = 6; // 6 cubes
+const size = 0.6; // Taille des cubes
 const boxGeo = new THREE.BoxGeometry(size, size, size);
-for (let i = 0; i < numBoxes; i += 1) {
-  const p = (i / numBoxes + Math.random() * 0.1) % 1;
-  const pos = tubeGeo.parameters.path.getPointAt(p);
+
+// Calculer la distance entre chaque point sur la spline
+const tubeLength = tubeGeo.parameters.path.getLength(); // Longueur totale de la spline
+const spacing = tubeLength / (numBoxes - 1);  // Calcul de l'espacement entre chaque cube
+
+for (let i = 0; i < numBoxes; i++) {
+  // Position uniforme le long de la spline
+  const p = i / (numBoxes - 1);  // Position uniforme entre 0 et 1
+  const pos = tubeGeo.parameters.path.getPointAt(p);  // Position de la spline
+  
+  // Calculer la position selon l'espacement
   const color = new THREE.Color().setHSL(0.7 + p, 1, 0.5);
+  
   const boxMat = new THREE.MeshBasicMaterial({
     color,
-    transparent: true,
-    opacity: 0.0
+    opacity: 1
   });
+  
   const hitBox = new THREE.Mesh(boxGeo, boxMat);
   hitBox.name = 'box';
-
-  pos.x += Math.random() - 0.4;
-  pos.z += Math.random() - 0.4;
+  
   hitBox.position.copy(pos);
   const rote = new THREE.Vector3(
     Math.random() * Math.PI,
@@ -77,16 +84,22 @@ for (let i = 0; i < numBoxes; i += 1) {
     Math.random() * Math.PI
   );
   hitBox.rotation.set(rote.x, rote.y, rote.z);
+  
   const edges = new THREE.EdgesGeometry(boxGeo, 0.2);
-
   const lineMat = new THREE.LineBasicMaterial({ color });
   const boxLines = new THREE.LineSegments(edges, lineMat);
   boxLines.position.copy(pos);
   boxLines.rotation.set(rote.x, rote.y, rote.z);
+  
   hitBox.userData.box = boxLines;
   boxGroup.add(hitBox);
   scene.add(boxLines);
 }
+
+
+
+
+
 
 // CROSSHAIRS
 let mousePos = new THREE.Vector2();
