@@ -14,11 +14,8 @@ camera.position.z = 5;
 scene.add(camera);
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize(w, h);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.appendChild(renderer.domElement);
 
-// post-processing
 const renderScene = new RenderPass(scene, camera);
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 1.5, 0.4, 100);
 bloomPass.threshold = 0.002;
@@ -31,215 +28,141 @@ composer.addPass(bloomPass);
 const stars = getStarfield();
 scene.add(stars);
 
-// create a tube geometry from the spline
 const tubeGeo = new THREE.TubeGeometry(spline, 222, 0.65, 16, true);
-
-// create edges geometry from the spline
-const tubeColor = 0x00ccff;
+const tubeColor = 0xffffff;
 const edges = new THREE.EdgesGeometry(tubeGeo, 0.2);
 const lineMat = new THREE.LineBasicMaterial({ color: tubeColor });
 const tubeLines = new THREE.LineSegments(edges, lineMat);
 scene.add(tubeLines);
 
-const hitMat = new THREE.MeshBasicMaterial({
-  color: tubeColor,
-  transparent: true,
-  opacity: 0.0,
-  side: THREE.BackSide
-});
-const tubeHitArea = new THREE.Mesh(tubeGeo, hitMat);
-scene.add(tubeHitArea);
-
 const boxGroup = new THREE.Group();
 scene.add(boxGroup);
 
-const numBoxes = 6; // 6 cubes
-const size = 0.6; // Taille des cubes
+// const numBoxes = 6;
+const size = 0.6;
 const boxGeo = new THREE.BoxGeometry(size, size, size);
+const tubeLength = tubeGeo.parameters.path.getLength();
+// const spacing = tubeLength / (numBoxes - 1);
 
-// Calculer la distance entre chaque point sur la spline
-const tubeLength = tubeGeo.parameters.path.getLength(); // Longueur totale de la spline
-const spacing = tubeLength / (numBoxes - 1);  // Calcul de l'espacement entre chaque cube
+const numBoxes = 6; // Assure-toi que c'est bien défini
+const spacing = tubeLength / numBoxes; // Ajustement pour 6 cubes bien répartis
 
 for (let i = 0; i < numBoxes; i++) {
-  // Position uniforme le long de la spline
-  const p = i / (numBoxes - 1);  // Position uniforme entre 0 et 1
-  const pos = tubeGeo.parameters.path.getPointAt(p);  // Position de la spline
-  
-  // Calculer la position selon l'espacement
+  const p = (i + 1) / numBoxes; // Changer de 0 à 1 pour commencer par le bon cube
+  const pos = tubeGeo.parameters.path.getPointAt(p);
+
   const color = new THREE.Color().setHSL(0.7 + p, 1, 0.5);
+  const boxMat = new THREE.MeshBasicMaterial({ color });
+  const box = new THREE.Mesh(boxGeo, boxMat);
+
+  box.name = `box-${i + 1}`; // ID de 1 à 6
+  box.userData.id = i + 1; // Correction ici aussi
   
-  const boxMat = new THREE.MeshBasicMaterial({
-    color,
-    opacity: 1
-  });
-  
-  const hitBox = new THREE.Mesh(boxGeo, boxMat);
-  hitBox.name = 'box';
-  
-  hitBox.position.copy(pos);
-  const rote = new THREE.Vector3(
-    Math.random() * Math.PI,
-    Math.random() * Math.PI,
-    Math.random() * Math.PI
-  );
-  hitBox.rotation.set(rote.x, rote.y, rote.z);
-  
-  const edges = new THREE.EdgesGeometry(boxGeo, 0.2);
-  const lineMat = new THREE.LineBasicMaterial({ color });
-  const boxLines = new THREE.LineSegments(edges, lineMat);
-  boxLines.position.copy(pos);
-  boxLines.rotation.set(rote.x, rote.y, rote.z);
-  
-  hitBox.userData.box = boxLines;
-  boxGroup.add(hitBox);
-  scene.add(boxLines);
+  box.position.copy(pos);
+  boxGroup.add(box);
 }
 
 
-
-
-
-
-// CROSSHAIRS
-let mousePos = new THREE.Vector2();
-const crosshairs = new THREE.Group();
-crosshairs.position.z = -1;
-camera.add(crosshairs);
-const crossMat = new THREE.LineBasicMaterial({
-  color: 0xffffff,
-});
-const lineGeo = new THREE.BufferGeometry();
-const lineVerts = [0, 0.05, 0, 0, 0.02, 0];
-lineGeo.setAttribute("position", new THREE.Float32BufferAttribute(lineVerts, 3));
-
-for (let i = 0; i < 4; i += 1) {
-  const line = new THREE.Line(lineGeo, crossMat);
-  line.rotation.z = i * 0.5 * Math.PI;
-  crosshairs.add(line);
-}
 
 const raycaster = new THREE.Raycaster();
-const direction = new THREE.Vector3();
-const impactPos = new THREE.Vector3();
-const impactColor = new THREE.Color();
-let impactBox = null;
+const mouse = new THREE.Vector2();
 
-let lasers = [];
-const laserGeo = new THREE.IcosahedronGeometry(0.05, 2);
-
-function getLaserBolt() {
-  const laserMat = new THREE.MeshBasicMaterial({
-    color: 0xFFCC00,
-    transparent: true,
-    fog: false
-  });
-  var laserBolt = new THREE.Mesh(laserGeo, laserMat);
-  laserBolt.position.copy(camera.position);
-
-  let active = true;
-  let speed = 0.5;
-
-  let goalPos = camera.position.clone()
-    .setFromMatrixPosition(crosshairs.matrixWorld);
-
-  const laserDirection = new THREE.Vector3(0, 0, 0);
-  laserDirection.subVectors(laserBolt.position, goalPos)
-    .normalize()
-    .multiplyScalar(speed);
-
-  direction.subVectors(goalPos, camera.position);
-  raycaster.set(camera.position, direction);
-  let intersects = raycaster.intersectObjects([...boxGroup.children, tubeHitArea], true);
-
-  if (intersects.length > 0) {
-    impactPos.copy(intersects[0].point);
-    impactColor.copy(intersects[0].object.material.color);
-    if (intersects[0].object.name === 'box') {
-      impactBox = intersects[0].object.userData.box;
-      boxGroup.remove(intersects[0].object);
-    }
-  }
-
-  let scale = 1.0;
-  let opacity = 1.0;
-  let isExploding = false;
-
-  function update() {
-    if (active === true) {
-    if (isExploding === false) {
-      laserBolt.position.sub(laserDirection);
-
-      if (laserBolt.position.distanceTo(impactPos) < 0.5) {
-        laserBolt.position.copy(impactPos);
-        laserBolt.material.color.set(impactColor);
-        isExploding = true;
-        impactBox?.scale.setScalar(0.0);
-      }
-    } else {
-      if (opacity > 0.01) {
-        scale += 0.2;
-        opacity *= 0.85;
-
-      } else {
-        opacity = 0.0;
-        scale = 0.01;
-        active = false;
-      }
-      laserBolt.scale.setScalar(scale);
-      laserBolt.material.opacity = opacity;
-      laserBolt.userData.active = active;
-    }
-  }
-  }
-  laserBolt.userData = { update, active };
-  return laserBolt;
+function onMouseMove(event) {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
 }
+
+function checkIntersections() {
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObjects(boxGroup.children);
+  if (intersects.length > 0) {
+    const box = intersects[0].object;
+    showPopup(box.userData.id);
+    stopCamera();
+  }
+}
+
+function showPopup(id) {
+  let popup = document.getElementById("popup");
+  if (!popup) {
+    popup = document.createElement("div");
+    popup.id = "popup";
+    popup.style.position = "fixed";
+    popup.style.top = "10px";
+    popup.style.left = "10px";
+    popup.style.background = "rgba(0, 0, 0, 0.7)";
+    popup.style.color = "white";
+    popup.style.padding = "10px";
+    popup.style.borderRadius = "5px";
+    popup.style.cursor = "pointer";
+    popup.addEventListener("click", closePopup);
+    document.body.appendChild(popup);
+  }
+  popup.innerText = `Cube ID: ${id}\n(Clique pour fermer)`;
+}
+
+function closePopup() {
+  const popup = document.getElementById("popup");
+  if (popup) {
+    popup.remove();
+    resumeCamera();
+  }
+}
+
+let cameraSpeed = 0.5;
+let isCameraStopped = false;
+let lastCameraPosition = new THREE.Vector3();
+let lastLookAt = new THREE.Vector3();
 
 function updateCamera(t) {
-  const time = t * 0.1;
-  const looptime = 10 * 1000;
-  const p = (time % looptime) / looptime;
-  const pos = tubeGeo.parameters.path.getPointAt(p);
-  const lookAt = tubeGeo.parameters.path.getPointAt((p + 0.03) % 1);
-  camera.position.copy(pos);
-  camera.lookAt(lookAt);
+  if (!isCameraStopped) {
+    const time = t * cameraSpeed;
+    const looptime = 20 * 1000;
+    const p = (time % looptime) / looptime;
+    const pos = tubeGeo.parameters.path.getPointAt(p);
+    const lookAt = tubeGeo.parameters.path.getPointAt((p + 0.03) % 1);
+    
+    camera.position.copy(pos);
+    camera.lookAt(lookAt);
+    
+    lastCameraPosition.copy(pos);
+    lastLookAt.copy(lookAt);
+  }
 }
+function stopCamera() {
+  if (!isCameraStopped) {
+    isCameraStopped = true;
+    // Diminuer la vitesse progressivement
+    cameraSpeed *= 0.95; // 0.95 représente une réduction de 5% à chaque frame
+    if (cameraSpeed < 0.01) { // Se fixer un seuil pour arrêter la caméra
+      cameraSpeed = 0;
+    }
+  }
+}
+
+
+function resumeCamera() {
+  if (isCameraStopped) {
+    isCameraStopped = false;
+    cameraSpeed = 0.5; // Reprise immédiate à la bonne vitesse
+  }
+}
+
 
 function animate(t = 0) {
   requestAnimationFrame(animate);
   updateCamera(t);
-  crosshairs.position.set(mousePos.x, mousePos.y, -1);
-  lasers.forEach(l => l.userData.update());
   composer.render(scene, camera);
 }
 animate();
 
-function fireLaser() {
-  const laser = getLaserBolt();
-  lasers.push(laser);
-  scene.add(laser);
+window.addEventListener("mousemove", onMouseMove);
+window.addEventListener("click", checkIntersections);
 
-  // cleanup
-  let inactiveLasers = lasers.filter((l) => l.userData.active === false);
-  scene.remove(...inactiveLasers);
-  lasers = lasers.filter((l) => l.userData.active === true);
-}
-window.addEventListener('click', () => fireLaser());
-
-function onMouseMove(evt) {
-  w = window.innerWidth;
-  h = window.innerHeight;
-  let aspect = w / h;
-  let fudge = { x: aspect * 0.75, y: 0.75 };
-  mousePos.x = ((evt.clientX / w) * 2 - 1) * fudge.x;
-  mousePos.y = (-1 * (evt.clientY / h) * 2 + 1) * fudge.y;
-}
-window.addEventListener('mousemove', onMouseMove, false);
-
-function handleWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-}
-window.addEventListener('resize', handleWindowResize, false);
+window.addEventListener("click", (event) => {
+  const intersects = raycaster.intersectObjects(boxGroup.children, true);
+  if (intersects.length > 0) {
+    console.log(`Cube touché : ${intersects[0].object.name}`);
+    stopCamera();
+  }
+});
